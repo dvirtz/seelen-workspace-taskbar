@@ -48,3 +48,10 @@ To rebuild the widget and create a distributable YAML file under `dist/bundles/`
 ```powershell
 npm run bundle
 ```
+
+## License
+
+Copyright (C) 2026 dvirtz.
+
+This project is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
+It uses [`@seelen-ui/lib`](https://www.npmjs.com/package/@seelen-ui/lib), which is also distributed under the GNU Affero General Public License v3.0. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution.
