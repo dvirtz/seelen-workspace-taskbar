@@ -1,0 +1,39 @@
+id: "@dyitzchaki/workspace-taskbar"
+metadata:
+  displayName: Workspace Taskbar
+  description: A taskbar whose pinned launchers and running apps follow the active Seelen workspace.
+  tags:
+    - taskbar
+    - workspaces
+icon: MdOutlineViewWeek
+preset: Overlay
+instances: ReplicaByMonitor
+lazy: false
+html: !include index.html
+js: !include index.js
+css: !include index.css
+settings:
+  - type: select
+    key: mode
+    label: Taskbar width
+    defaultValue: Minimal
+    allowSetByMonitor: true
+    subtype: Inline
+    options:
+      - value: Minimal
+        label: Minimal
+      - value: Full Width
+        label: Full Width
+  - type: select
+    key: hideMode
+    label: Auto-hide
+    description: Choose when the taskbar moves out of view.
+    defaultValue: Never
+    allowSetByMonitor: true
+    options:
+      - value: Never
+        label: Never
+      - value: Always
+        label: Always
+      - value: OnOverlap
+        label: On overlap
