@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - beta
   pull_request:
   workflow_dispatch:
 
@@ -22,7 +23,7 @@ jobs:
 
     steps:
       - uses: actions/create-github-app-token@v3
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta')
         id: app-token
         with:
           client-id: ${{ vars.SEMANTIC_RELEASE_APP_ID }}
