@@ -7,13 +7,17 @@
   "scripts": {
     "build": "npm run typecheck && node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "bundle": "npm run typecheck && node scripts/bundle.mjs"
+    "bundle": "npm run typecheck && node scripts/bundle.mjs",
+    "release": "semantic-release"
   },
   "dependencies": {
     "@seelen-ui/lib": "2.8.4"
   },
   "devDependencies": {
+    "@semantic-release/git": "11.0.1",
     "esbuild": "0.28.2",
+    "semantic-release": "25.0.9",
+    "semantic-release-mirror-version": "1.1.2",
     "typescript": "5.9.3"
   }
 }

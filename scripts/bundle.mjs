@@ -8,9 +8,9 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const widgetDirectory = path.resolve("dist/widget");
 const bundleDirectory = path.resolve("dist/bundles");
-const slu = process.platform === "win32"
+const slu = process.env.SLU_PATH || (process.platform === "win32"
   ? "C:\\Program Files\\Seelen\\Seelen UI\\slu.exe"
-  : "slu";
+  : "slu");
 
 const { stdout, stderr } = await execFileAsync(
   slu,
