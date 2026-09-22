@@ -1,4 +1,4 @@
-id: "@dyitzchaki/workspace-taskbar"
+id: "@dvirtz/workspace-taskbar"
 metadata:
   displayName: Workspace Taskbar
   description: A taskbar whose pinned launchers and running apps follow the active Seelen workspace.
