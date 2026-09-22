@@ -54,7 +54,9 @@ Bundling requires the Seelen CLI. Set `SLU_PATH` to override its executable path
 
 ## Releases
 
-Pushes to `main` run semantic-release after type-checking and bundling the widget.
+CI type-checks and bundles the widget on pull requests and pushes to `main`.
+It then runs semantic-release, which skips publishing on pull requests and
+publishes qualifying releases on `main`.
 It creates a version tag and GitHub release with generated release notes and a
 `workspace-taskbar-<version>.yml` download. The release workflow extracts the
 Seelen CLI from its official Windows package and authenticates with a GitHub App.
@@ -66,7 +68,7 @@ and pull requests write permissions, plus permission to push release commits to
 Use [Conventional Commits](https://www.conventionalcommits.org) for release changes.
 Releases synchronize the version in `package.json` and `package-lock.json` using
 `semantic-release-mirror-version` and commit both files with `@semantic-release/git`.
-The Release workflow can also be run manually on `main` to retry a failed run.
+The CI workflow can also be run manually on `main` to retry a failed release.
 
 ## License
 
