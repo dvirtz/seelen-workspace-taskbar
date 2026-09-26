@@ -104,6 +104,7 @@ const state: {
 
 let iconPackManager: IconPackManager | undefined;
 const requestedIcons = new Set<string>();
+const renderedTasks = new Map<HTMLButtonElement, TaskItem>();
 let taskbarLeaseUpdatePending = false;
 
 function readTaskbarLease(): NativeTaskbarLease | null {
@@ -529,8 +530,15 @@ function modelFor(workspace: DesktopWorkspace): TaskItem[] {
   }));
 }
 
+function updateTaskFocus(): void {
+  for (const [button, item] of renderedTasks) {
+    button.classList.toggle("is-focused", item.windows.some((win) => win.hwnd === state.focusedHwnd));
+  }
+}
+
 function render(): void {
   const workspace = activeWorkspace();
+  renderedTasks.clear();
   elements.items.replaceChildren();
 
   if (!workspace) {
@@ -556,7 +564,6 @@ function render(): void {
     button.type = "button";
     button.className = "task-item";
     button.classList.toggle("is-open", item.windows.length > 0);
-    button.classList.toggle("is-focused", item.windows.some((win) => win.hwnd === state.focusedHwnd));
     button.title = item.label;
     button.setAttribute("aria-label", `${item.label}; right-click to ${item.pin ? "unpin" : "pin"}`);
     button.append(createIcon(item));
@@ -582,8 +589,10 @@ function render(): void {
       togglePin(workspace, item);
     });
     elements.items.append(button);
+    renderedTasks.set(button, item);
   }
 
+  updateTaskFocus();
   updateAutoHide();
 }
 
@@ -651,7 +660,10 @@ await Promise.all([
   subscribe(SeelenEvent.GlobalFocusChanged, ({ payload }) => {
     state.focusedHwnd = payload.hwnd;
     state.widgetFocused = payload.hwnd === widget.windowId || payload.ownerHwnd === widget.windowId;
-    render();
+    // Keep the pressed button mounted between pointer-down and click when the
+    // taskbar gains focus, otherwise the first click can be lost.
+    updateTaskFocus();
+    updateAutoHide();
   }),
   subscribe(SeelenEvent.GlobalMouseMove, ({ payload }) => {
     state.mousePosition = payload;
