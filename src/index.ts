@@ -5,6 +5,7 @@ import type {
   Relaunch,
   SeelenCommandGetIconArgs,
   UserAppWindow,
+  UserAppWindowPreview,
   VirtualDesktops,
 } from "@seelen-ui/lib/types";
 
@@ -58,6 +59,7 @@ function requiredSelector<T extends HTMLElement>(selector: string): T {
 }
 
 const BAR_HEIGHT = 58;
+const WIDGET_HEIGHT = 280;
 const HIDE_DELAY = 800;
 const SHOW_DELAY = 100;
 const SEELEN_WEG_ID = "@seelen/weg";
@@ -72,6 +74,7 @@ const elements = {
   items: requiredElement<HTMLElement>("task-items"),
   empty: requiredElement<HTMLElement>("empty-state"),
   toast: requiredElement<HTMLElement>("toast"),
+  previews: requiredElement<HTMLElement>("window-previews"),
 };
 
 const state: {
@@ -106,6 +109,110 @@ let iconPackManager: IconPackManager | undefined;
 const requestedIcons = new Set<string>();
 const renderedTasks = new Map<HTMLButtonElement, TaskItem>();
 let taskbarLeaseUpdatePending = false;
+let previews: Record<number, UserAppWindowPreview> = {};
+let previewKey: string | null = null;
+let previewWorkspace: string | null = null;
+let previewTimer: number | undefined;
+let previewCloseTimer: number | undefined;
+
+function closePreviews(): void {
+  clearTimeout(previewTimer);
+  clearTimeout(previewCloseTimer);
+  previewKey = null;
+  elements.previews.hidden = true;
+  elements.previews.replaceChildren();
+  for (const button of renderedTasks.keys()) button.setAttribute("aria-expanded", "false");
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+function schedulePreviewClose(): void {
+  clearTimeout(previewTimer);
+  clearTimeout(previewCloseTimer);
+  previewCloseTimer = setTimeout(closePreviews, 300);
+}
+
+function updatePreviewImages(): void {
+  for (const card of Array.from(elements.previews.querySelectorAll<HTMLButtonElement>(".window-preview"))) {
+    const preview = previews[Number(card.dataset.hwnd)];
+    const image = card.querySelector("img")!;
+    const fallback = card.querySelector<HTMLElement>(".preview-unavailable")!;
+    if (preview && image.dataset.hash !== preview.hash) {
+      image.dataset.hash = preview.hash;
+      image.hidden = false;
+      fallback.hidden = true;
+      image.src = `data:image/webp;base64,${preview.data}`;
+    } else if (!preview) {
+      image.hidden = true;
+      image.removeAttribute("src");
+      delete image.dataset.hash;
+      fallback.hidden = false;
+    }
+  }
+}
+
+function showPreviews(button: HTMLButtonElement, item: TaskItem, refreshing = false): void {
+  clearTimeout(previewTimer);
+  if (!refreshing) clearTimeout(previewCloseTimer);
+  if (!button.isConnected || item.windows.length < 2) return;
+  previewKey = item.key;
+  previewWorkspace = activeWorkspace()?.id ?? null;
+  for (const task of renderedTasks.keys()) task.setAttribute("aria-expanded", String(task === button));
+  elements.previews.setAttribute("aria-label", `${item.label} windows`);
+  // Keep cards mounted across thumbnail and window updates to preserve clicks and focus.
+  const existing = new Map(Array.from(elements.previews.querySelectorAll<HTMLButtonElement>(".window-preview"))
+    .map((card) => [Number(card.dataset.hwnd), card]));
+  const wanted = new Set(item.windows.map((win) => win.hwnd));
+  for (const [hwnd, card] of existing) if (!wanted.has(hwnd)) card.remove();
+  for (const win of item.windows) {
+    let card = existing.get(win.hwnd);
+    if (!card) {
+      card = document.createElement("button");
+      card.type = "button";
+      card.className = "window-preview";
+      card.dataset.hwnd = String(win.hwnd);
+      const title = document.createElement("span");
+      title.className = "preview-title";
+      const image = document.createElement("img");
+      image.alt = "";
+      image.draggable = false;
+      const fallback = document.createElement("span");
+      fallback.className = "preview-unavailable";
+      fallback.textContent = "Preview unavailable";
+      image.addEventListener("error", () => { image.hidden = true; fallback.hidden = false; });
+      card.append(title, image, fallback);
+      card.addEventListener("click", () => {
+        closePreviews();
+        invoke(SeelenCommand.WegToggleWindowState, { hwnd: win.hwnd, wasFocused: false }).catch(reportError);
+      });
+      elements.previews.append(card);
+    }
+    card.querySelector(".preview-title")!.textContent = win.title || item.label;
+    card.setAttribute("aria-label", `Open ${win.title || item.label}`);
+    card.title = win.title || item.label;
+  }
+  elements.previews.hidden = false;
+  updatePreviewImages();
+  const bounds = button.getBoundingClientRect();
+  const width = elements.previews.getBoundingClientRect().width;
+  elements.previews.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, bounds.left + bounds.width / 2 - width / 2))}px`;
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+elements.previews.addEventListener("pointerenter", () => clearTimeout(previewCloseTimer));
+elements.previews.addEventListener("pointerleave", schedulePreviewClose);
+elements.previews.addEventListener("focusin", () => clearTimeout(previewCloseTimer));
+elements.previews.addEventListener("focusout", (event) => {
+  if (!(event.relatedTarget instanceof Node) || !elements.previews.contains(event.relatedTarget)) schedulePreviewClose();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && previewKey) {
+    const anchor = [...renderedTasks].find(([, item]) => item.key === previewKey)?.[0];
+    closePreviews();
+    anchor?.focus();
+  }
+});
 
 function readTaskbarLease(): NativeTaskbarLease | null {
   try {
@@ -403,7 +510,7 @@ function taskbarOverlapsWindow(): boolean {
 
 function autoHideWanted(): boolean {
   if (state.desktops?.switching) return false;
-  if (state.widgetFocused || state.mouseAtBottomEdge || state.pointerOverSurface) return false;
+  if (previewKey || state.widgetFocused || state.mouseAtBottomEdge || state.pointerOverSurface) return false;
 
   switch (state.config.hideMode) {
     case "Always":
@@ -494,15 +601,20 @@ function updateCursorHitbox(mousePosition = state.mousePosition): void {
 
   const [mouseX, mouseY] = mousePosition;
   const scale = monitor.scaleFactor;
-  const bounds = elements.surface.getBoundingClientRect();
-  const left = monitor.rect.left + bounds.left * scale;
-  const top = monitor.rect.bottom - Math.round(BAR_HEIGHT * scale) + bounds.top * scale;
-  const right = monitor.rect.left + bounds.right * scale;
-  const bottom = monitor.rect.bottom - Math.round(BAR_HEIGHT * scale) + bounds.bottom * scale;
-  const isOverSurface = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
+  const surfaces = [elements.surface];
+  if (!elements.previews.hidden) surfaces.push(elements.previews);
+  const isOverSurface = surfaces.some((surface) => {
+    const bounds = surface.getBoundingClientRect();
+    const left = monitor.rect.left + bounds.left * scale;
+    const top = monitor.rect.bottom - Math.round(WIDGET_HEIGHT * scale) + bounds.top * scale;
+    const right = monitor.rect.left + bounds.right * scale;
+    const bottom = monitor.rect.bottom - Math.round(WIDGET_HEIGHT * scale) + bounds.bottom * scale;
+    return mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
+  });
 
   if (isOverSurface !== state.pointerOverSurface) {
     state.pointerOverSurface = isOverSurface;
+    if (!isOverSurface && previewKey) schedulePreviewClose();
     updateAutoHide();
   }
   setCursorEventsAllowed(isOverSurface);
@@ -538,6 +650,8 @@ function updateTaskFocus(): void {
 
 function render(): void {
   const workspace = activeWorkspace();
+  clearTimeout(previewTimer);
+  if (previewWorkspace !== workspace?.id) closePreviews();
   renderedTasks.clear();
   elements.items.replaceChildren();
 
@@ -569,6 +683,22 @@ function render(): void {
     button.append(createIcon(item));
 
     if (item.windows.length > 1) {
+      button.title = "";
+      button.setAttribute("aria-controls", "window-previews");
+      button.setAttribute("aria-expanded", "false");
+      button.addEventListener("pointerenter", () => {
+        clearTimeout(previewCloseTimer);
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => showPreviews(button, item), 350);
+      });
+      button.addEventListener("pointerleave", schedulePreviewClose);
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          showPreviews(button, item);
+          elements.previews.querySelector<HTMLButtonElement>("button")?.focus();
+        }
+      });
       const count = document.createElement("span");
       count.className = "task-count";
       count.textContent = String(item.windows.length);
@@ -583,7 +713,7 @@ function render(): void {
       button.append(pinMark);
     }
 
-    button.addEventListener("click", () => activate(item).catch(reportError));
+    button.addEventListener("click", () => { closePreviews(); activate(item).catch(reportError); });
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       togglePin(workspace, item);
@@ -593,13 +723,18 @@ function render(): void {
   }
 
   updateTaskFocus();
+  if (previewKey) {
+    const anchor = [...renderedTasks].find(([, item]) => item.key === previewKey && item.windows.length > 1);
+    if (anchor) showPreviews(anchor[0], anchor[1], true);
+    else closePreviews();
+  }
   updateAutoHide();
 }
 
 async function positionWidget(): Promise<void> {
   const monitor = state.monitors.find((entry) => entry.id === monitorId);
   if (!monitor) return;
-  const height = Math.round(BAR_HEIGHT * monitor.scaleFactor);
+  const height = Math.round(WIDGET_HEIGHT * monitor.scaleFactor);
   await widget.setPosition({
     left: monitor.rect.left,
     top: monitor.rect.bottom - height,
@@ -649,6 +784,10 @@ await Settings.onChange((nextSettings) => {
 await syncNativeTaskbarLease(settings);
 
 await Promise.all([
+  subscribe(SeelenEvent.UserAppWindowsPreviewsChanged, ({ payload }) => {
+    previews = payload;
+    updatePreviewImages();
+  }),
   subscribe(SeelenEvent.VirtualDesktopsChanged, ({ payload }) => {
     state.desktops = payload;
     render();
@@ -671,10 +810,17 @@ await Promise.all([
     updateCursorHitbox(payload);
   }),
   subscribe(SeelenEvent.SystemMonitorsChanged, ({ payload }) => {
+    closePreviews();
     state.monitors = payload;
     positionWidget().catch(reportError);
   }),
 ]);
+
+try {
+  previews = await invoke(SeelenCommand.GetUserAppWindowsPreviews);
+} catch (error) {
+  console.warn("Could not load window previews", error);
+}
 
 await positionWidget();
 render();
