@@ -8,6 +8,8 @@ A proof-of-concept Seelen UI widget with taskbar state scoped to the active Seel
 - Shows only windows belonging to that monitor's active Seelen workspace.
 - Includes windows pinned globally by Seelen.
 - Stores app pins independently for each monitor and workspace.
+- Drag icons left or right to reorder pinned shortcuts and running apps. Order is saved per monitor and workspace, including across restarts. Drop outside the icon row or press Escape to cancel.
+- Right-click an icon and choose **Lock icon order** to prevent reordering; choose **Unlock icon order** to enable it again. The lock is saved per monitor and workspace.
 - Shows application icons with app names on hover.
 - Hover an app with multiple windows to see thumbnails and titles, then click a preview to focus that window. Focus an app icon and press Up to select previews with the keyboard; Escape dismisses them. Windows without a thumbnail remain selectable by title.
 - Supports Never, Always, and On overlap auto-hide modes, configurable per monitor.
