@@ -1,6 +1,6 @@
 # Seelen Workspace Taskbar
 
-A proof-of-concept Seelen UI widget with taskbar state scoped to the active Seelen workspace.
+A Seelen UI widget with taskbar state scoped to the active Seelen workspace.
 
 ## What it does
 
