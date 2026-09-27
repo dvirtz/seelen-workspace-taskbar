@@ -1,6 +1,22 @@
 # Seelen Workspace Taskbar
 
+<img src="assets/logo.png" alt="Workspace Taskbar logo" width="128" height="128">
+
 A Seelen UI widget with taskbar state scoped to the active Seelen workspace.
+
+## Screenshots
+
+The Personal workspace taskbar shows its pinned apps and running-window counts.
+
+![Personal workspace taskbar on the desktop wallpaper](assets/taskbar-minimal.png)
+
+Grouped window previews let you choose which app window to open.
+
+![Taskbar with grouped Visual Studio Code window previews](assets/taskbar-window-previews.png)
+
+The Work workspace has its own apps, with a right-click menu for managing shortcuts and icon order.
+
+![Work workspace taskbar with the shortcut context menu open](assets/taskbar-work-menu.png)
 
 ## What it does
 
