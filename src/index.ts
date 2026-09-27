@@ -128,6 +128,93 @@ let shortcutFocusRequest = 0;
 const shortcutWindows = new Map<number, { workspaceId: string; pinKey: string }>();
 const shortcutLaunches = new Map<string, { workspaceId: string; started: number; existing: Set<number> }>();
 
+interface IconLayout { order: string[]; locked: boolean }
+let drag: { button: HTMLButtonElement; pointerId: number; workspaceId: string; x: number; y: number; moved: boolean } | null = null;
+let suppressDragClick = false;
+
+function readIconLayout(workspaceId: string): IconLayout {
+  try {
+    const value = JSON.parse(localStorage.getItem(`icon-layout:${monitorId}:${workspaceId}`) ?? "null");
+    return {
+      order: Array.isArray(value?.order) ? [...new Set<string>(value.order.filter((key: unknown) => typeof key === "string"))] : [],
+      locked: value?.locked === true,
+    };
+  } catch { return { order: [], locked: false }; }
+}
+
+function writeIconLayout(workspaceId: string, layout: IconLayout): void {
+  localStorage.setItem(`icon-layout:${monitorId}:${workspaceId}`, JSON.stringify(layout));
+}
+
+function finishDrag(commit = false): void {
+  const current = drag;
+  if (!current) return;
+  drag = null;
+  current.button.classList.remove("is-dragging");
+  if (elements.items.hasPointerCapture(current.pointerId)) elements.items.releasePointerCapture(current.pointerId);
+  if (current.moved) {
+    suppressDragClick = true;
+    if (commit && current.workspaceId === activeWorkspace()?.id) {
+      try {
+        const layout = readIconLayout(current.workspaceId);
+        if (!layout.locked) {
+          const order = Array.from(elements.items.children).map((button) => renderedTasks.get(button as HTMLButtonElement)!.key);
+          // Keep absent apps' positions so reopening an app restores its order.
+          const visible = new Set(order);
+          let index = 0;
+          layout.order = layout.order.map((key) => visible.has(key) ? order[index++] : key);
+          layout.order.push(...order.slice(index));
+          writeIconLayout(current.workspaceId, layout);
+        }
+      } catch (error) { reportError(error); }
+    }
+  }
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+function toggleOrderLock(): void {
+  const workspace = activeWorkspace();
+  if (!workspace) return;
+  try {
+    const layout = readIconLayout(workspace.id);
+    layout.locked = !layout.locked;
+    writeIconLayout(workspace.id, layout);
+    render();
+  } catch (error) { reportError(error); }
+}
+
+document.addEventListener("pointermove", (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
+  if (!drag.moved) elements.items.setPointerCapture(event.pointerId);
+  drag.moved = true;
+  drag.button.classList.add("is-dragging");
+  closePreviews();
+  closeAppMenu();
+  const bounds = elements.items.getBoundingClientRect();
+  if (event.clientY < bounds.top || event.clientY > bounds.bottom) return;
+  const others = Array.from(elements.items.children).filter((button) => button !== drag!.button);
+  const next = others.find((button) => {
+    const rect = button.getBoundingClientRect();
+    return event.clientX < rect.left + rect.width / 2;
+  });
+  elements.items.insertBefore(drag.button, next ?? null);
+});
+document.addEventListener("pointerup", (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const bounds = elements.items.getBoundingClientRect();
+  finishDrag(event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom);
+  // Let the click from an ordinary press reach its original button.
+  setTimeout(render, 0);
+});
+elements.items.addEventListener("lostpointercapture", () => { if (drag) { finishDrag(); render(); } });
+elements.items.addEventListener("pointercancel", () => { finishDrag(); render(); });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && drag) { finishDrag(); render(); }
+});
+window.addEventListener("blur", () => { if (drag) { finishDrag(); render(); } });
+
 function shortcutMatchesWindow(pin: Pin, win: UserAppWindow): boolean {
   const normalize = (value: string | null | undefined) => value?.replaceAll("/", "\\").toLowerCase();
   const umid = pin.matchUmid ?? pin.umid;
@@ -174,12 +261,12 @@ function showAppMenu(button: HTMLButtonElement, item: TaskItem): void {
   menuKey = item.key;
   const source = item.pin ?? (item.windows[0] ? pinFromWindow(item.windows[0]) : null);
   const canPin = !!item.pin || (!!source && !item.windows[0]?.preventPinning);
-  const action = (label: string, run: () => void) => {
+  const action = (label: string, run: () => void, enabled = canPin) => {
     const option = document.createElement("button");
     option.type = "button";
     option.setAttribute("role", "menuitem");
     option.textContent = label;
-    option.disabled = !canPin;
+    option.disabled = !enabled;
     option.addEventListener("click", () => {
       closeAppMenu(true);
       if (activeWorkspace()?.id === workspace.id) run();
@@ -191,6 +278,7 @@ function showAppMenu(button: HTMLButtonElement, item: TaskItem): void {
   if (item.pin?.key.startsWith("shortcut:")) {
     action("Edit shortcut…", () => openShortcutForm(item.pin, true));
   }
+  action(readIconLayout(workspace.id).locked ? "Unlock icon order" : "Lock icon order", toggleOrderLock, true);
   elements.appMenu.hidden = false;
   const bounds = button.getBoundingClientRect();
   const width = elements.appMenu.getBoundingClientRect().width;
@@ -358,6 +446,7 @@ function updatePreviewImages(): void {
 }
 
 function showPreviews(button: HTMLButtonElement, item: TaskItem, refreshing = false): void {
+  if (drag?.moved) return;
   clearTimeout(previewTimer);
   if (!refreshing) clearTimeout(previewCloseTimer);
   if (!button.isConnected || item.windows.length < 2) return;
@@ -724,6 +813,7 @@ function taskbarOverlapsWindow(): boolean {
 }
 
 function autoHideWanted(): boolean {
+  if (drag) return false;
   if (!elements.appMenu.hidden) return false;
   if (!elements.shortcutForm.hidden) return false;
   if (state.desktops?.switching) return false;
@@ -804,6 +894,7 @@ function setCursorEventsAllowed(allowed: boolean): void {
 }
 
 function updateCursorHitbox(mousePosition = state.mousePosition): void {
+  if (drag) { setCursorEventsAllowed(true); return; }
   if (!mousePosition || !elements.surface) {
     setCursorEventsAllowed(false);
     return;
@@ -891,6 +982,9 @@ function updateTaskFocus(): void {
 
 function render(): void {
   const workspace = activeWorkspace();
+  // Preserve capture during background window/icon updates; render fresh on release.
+  if (drag && drag.workspaceId === workspace?.id) return;
+  finishDrag();
   if (shortcutWorkspace && shortcutWorkspace !== workspace?.id) closeShortcutForm();
   if (menuWorkspace && menuWorkspace !== workspace?.id) closeAppMenu();
   clearTimeout(previewTimer);
@@ -912,7 +1006,9 @@ function render(): void {
   elements.badge.textContent = workspace.name || `Workspace ${workspaceNumber}`;
   elements.badge.title = `Pins here belong only to ${elements.badge.textContent}`;
 
-  const items = modelFor(workspace);
+  const layout = readIconLayout(workspace.id);
+  const ranks = new Map(layout.order.map((key, index) => [key, index]));
+  const items = modelFor(workspace).sort((a, b) => (ranks.get(a.key) ?? Infinity) - (ranks.get(b.key) ?? Infinity));
   elements.empty.textContent = "No windows here yet";
   elements.empty.hidden = items.length > 0;
 
@@ -920,6 +1016,14 @@ function render(): void {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "task-item";
+    button.classList.toggle("is-reorderable", !layout.locked);
+    button.addEventListener("dragstart", (event) => event.preventDefault());
+    button.addEventListener("pointerdown", (event) => {
+      suppressDragClick = false;
+      if (event.button !== 0 || !event.isPrimary || readIconLayout(workspace.id).locked) return;
+      drag = { button, pointerId: event.pointerId, workspaceId: workspace.id, x: event.clientX, y: event.clientY, moved: false };
+      updateAutoHide();
+    });
     button.classList.toggle("is-open", item.windows.length > 0);
     button.title = item.label;
     button.setAttribute("aria-label", `${item.label}; right-click for pin options`);
@@ -956,7 +1060,7 @@ function render(): void {
       button.append(pinMark);
     }
 
-    button.addEventListener("click", () => { closePreviews(); activate(item).catch(reportError); });
+    button.addEventListener("click", (event) => { if (suppressDragClick && event.detail !== 0) return; closePreviews(); activate(item).catch(reportError); });
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       showAppMenu(button, item);

@@ -282,6 +282,9 @@ button {
   transform: translateY(1px);
 }
 
+.task-item.is-reorderable { touch-action: none; cursor: grab; }
+.task-item.is-dragging { opacity: 0.55; cursor: grabbing; outline: 2px solid var(--config-accent-color, #6ea8fe); }
+
 .task-item.is-focused {
   background: color-mix(in srgb, var(--config-accent-color, #6ea8fe) 24%, rgba(255, 255, 255, 0.07));
   border-color: color-mix(in srgb, var(--config-accent-color, #6ea8fe) 55%, transparent);
