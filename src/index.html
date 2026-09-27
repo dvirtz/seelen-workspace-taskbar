@@ -1,4 +1,13 @@
 <div id="window-previews" class="window-previews" role="group" aria-label="Open windows" hidden></div>
+<div id="app-menu" class="app-menu" role="menu" aria-label="Application actions" hidden></div>
+<form id="shortcut-form" class="shortcut-form" aria-label="Pin shortcut" hidden>
+  <strong>Pin shortcut</strong>
+  <label>Name<input name="label" required placeholder="Work browser" autocomplete="off"></label>
+  <label>Application or shortcut path<input name="program" required placeholder="C:\Program Files\App\app.exe" autocomplete="off"></label>
+  <label>Arguments (optional)<input name="args" placeholder='--profile "Work profile"' autocomplete="off"></label>
+  <label>Start in (optional)<input name="workingDir" placeholder="C:\Projects" autocomplete="off"></label>
+  <div class="shortcut-actions"><button type="button" id="cancel-shortcut">Cancel</button><button type="submit">Pin shortcut</button></div>
+</form>
 <main id="workspace-taskbar" class="workspace-taskbar" aria-label="Workspace taskbar">
   <section class="taskbar-surface">
     <div id="workspace-badge" class="workspace-badge" title="Current Seelen workspace"></div>

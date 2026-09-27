@@ -25,6 +25,101 @@ button {
   display: none !important;
 }
 
+.shortcut-actions button {
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
+.app-menu {
+  position: absolute;
+  bottom: 62px;
+  z-index: 4;
+  display: grid;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  padding: 6px;
+  color: #f7f7fb;
+  background: #171820;
+  border: 1px solid #636578;
+  border-radius: 8px;
+}
+
+.app-menu button {
+  padding: 8px 16px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.app-menu button:hover,
+.app-menu button:focus-visible {
+  background: #353744;
+  outline: 2px solid var(--config-accent-color, #6ea8fe);
+}
+
+.app-menu button:disabled {
+  opacity: 0.5;
+}
+
+.shortcut-form {
+  position: absolute;
+  bottom: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  width: min(560px, calc(100% - 16px));
+  max-height: calc(100% - 70px);
+  overflow-y: auto;
+  padding: 12px;
+  color: #f7f7fb;
+  background: rgba(23, 24, 32, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.shortcut-form strong,
+.shortcut-actions {
+  grid-column: 1 / -1;
+}
+
+.shortcut-form label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shortcut-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px;
+  font: inherit;
+  color: inherit;
+  background: #101118;
+  border: 1px solid #636578;
+  border-radius: 4px;
+  user-select: text;
+}
+
+.shortcut-form :focus-visible {
+  outline: 2px solid var(--config-accent-color, #6ea8fe);
+  outline-offset: 1px;
+}
+
+.shortcut-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .window-previews {
   position: absolute;
   bottom: 58px;

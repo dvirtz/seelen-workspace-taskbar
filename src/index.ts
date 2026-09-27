@@ -23,6 +23,8 @@ interface Pin {
   path: string | null;
   umid: string | null;
   relaunch: Relaunch | null;
+  matchPath?: string | null;
+  matchUmid?: string | null;
 }
 
 interface TaskItem {
@@ -75,6 +77,8 @@ const elements = {
   empty: requiredElement<HTMLElement>("empty-state"),
   toast: requiredElement<HTMLElement>("toast"),
   previews: requiredElement<HTMLElement>("window-previews"),
+  shortcutForm: requiredElement<HTMLFormElement>("shortcut-form"),
+  appMenu: requiredElement<HTMLElement>("app-menu"),
 };
 
 const state: {
@@ -114,6 +118,208 @@ let previewKey: string | null = null;
 let previewWorkspace: string | null = null;
 let previewTimer: number | undefined;
 let previewCloseTimer: number | undefined;
+let shortcutWorkspace: string | null = null;
+let menuWorkspace: string | null = null;
+let menuKey: string | null = null;
+let shortcutSource: Pin | null = null;
+let editingShortcutKey: string | null = null;
+let initialArguments = "";
+let shortcutFocusRequest = 0;
+const shortcutWindows = new Map<number, { workspaceId: string; pinKey: string }>();
+const shortcutLaunches = new Map<string, { workspaceId: string; started: number; existing: Set<number> }>();
+
+function shortcutMatchesWindow(pin: Pin, win: UserAppWindow): boolean {
+  const normalize = (value: string | null | undefined) => value?.replaceAll("/", "\\").toLowerCase();
+  const umid = pin.matchUmid ?? pin.umid;
+  if (umid && win.umid && normalize(umid) === normalize(win.umid)) return true;
+  const paths = [pin.matchPath, pin.relaunch?.command, pin.path].map(normalize).filter(Boolean);
+  return [win.process.path, win.relaunch?.command].some((path) => !!path && paths.includes(normalize(path)));
+}
+
+function restoreShortcutFocus(): void {
+  [...renderedTasks].find(([, item]) => item.key === shortcutSource?.key)?.[0].focus();
+}
+
+async function focusShortcutInput(input: HTMLInputElement): Promise<void> {
+  const request = ++shortcutFocusRequest;
+  // DOM focus alone does not activate the overlay's native window/WebView.
+  await widget.focus();
+  if (request === shortcutFocusRequest && !elements.shortcutForm.hidden) input.focus();
+}
+
+elements.shortcutForm.addEventListener("pointerdown", (event) => {
+  if (event.target instanceof HTMLInputElement) {
+    focusShortcutInput(event.target).catch(reportError);
+  }
+});
+
+function closeAppMenu(restoreFocus = false): void {
+  const key = menuKey;
+  menuWorkspace = null;
+  menuKey = null;
+  elements.appMenu.hidden = true;
+  elements.appMenu.replaceChildren();
+  if (restoreFocus) [...renderedTasks].find(([, item]) => item.key === key)?.[0].focus();
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+function showAppMenu(button: HTMLButtonElement, item: TaskItem): void {
+  const workspace = activeWorkspace();
+  if (!workspace) return;
+  closePreviews();
+  closeShortcutForm();
+  closeAppMenu();
+  menuWorkspace = workspace.id;
+  menuKey = item.key;
+  const source = item.pin ?? (item.windows[0] ? pinFromWindow(item.windows[0]) : null);
+  const canPin = !!item.pin || (!!source && !item.windows[0]?.preventPinning);
+  const action = (label: string, run: () => void) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.setAttribute("role", "menuitem");
+    option.textContent = label;
+    option.disabled = !canPin;
+    option.addEventListener("click", () => {
+      closeAppMenu(true);
+      if (activeWorkspace()?.id === workspace.id) run();
+    });
+    elements.appMenu.append(option);
+  };
+  action(item.pin ? "Unpin" : "Pin application", () => togglePin(workspace, item));
+  action("Pin shortcut…", () => openShortcutForm(source));
+  if (item.pin?.key.startsWith("shortcut:")) {
+    action("Edit shortcut…", () => openShortcutForm(item.pin, true));
+  }
+  elements.appMenu.hidden = false;
+  const bounds = button.getBoundingClientRect();
+  const width = elements.appMenu.getBoundingClientRect().width;
+  elements.appMenu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, bounds.left))}px`;
+  elements.appMenu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (!elements.appMenu.hidden && event.target instanceof Node && !elements.appMenu.contains(event.target)) closeAppMenu();
+});
+elements.appMenu.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" || event.key === "Tab") {
+    if (event.key === "Escape") event.preventDefault();
+    closeAppMenu(true);
+  } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const options = Array.from(elements.appMenu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+    const index = options.findIndex((option) => option === document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+      : (index + (event.key === "ArrowUp" ? -1 : 1) + options.length) % options.length;
+    options[next]?.focus();
+  }
+});
+
+function closeShortcutForm(): void {
+  shortcutFocusRequest++;
+  shortcutWorkspace = null;
+  editingShortcutKey = null;
+  elements.shortcutForm.hidden = true;
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+function openShortcutForm(source: Pin | null = null, editing = false): void {
+  const workspace = activeWorkspace();
+  if (!workspace) return;
+  closePreviews();
+  closeAppMenu();
+  shortcutWorkspace = workspace.id;
+  shortcutSource = source;
+  editingShortcutKey = editing ? source?.key ?? null : null;
+  const title = editingShortcutKey ? "Edit shortcut" : "Pin shortcut";
+  elements.shortcutForm.setAttribute("aria-label", title);
+  elements.shortcutForm.querySelector("strong")!.textContent = title;
+  elements.shortcutForm.querySelector<HTMLButtonElement>('button[type="submit"]')!.textContent =
+    editingShortcutKey ? "Save changes" : "Pin shortcut";
+  elements.shortcutForm.reset();
+  const args = source?.relaunch?.args;
+  // Quote Windows argv values, including embedded quotes and trailing backslashes.
+  initialArguments = Array.isArray(args) ? args.map((arg) =>
+    `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`).join(" ") : args ?? "";
+  const values = {
+    label: source?.label ?? "",
+    program: source?.relaunch?.command ?? (source?.umid ? `shell:AppsFolder\\${source.umid}` : source?.path) ?? "",
+    args: initialArguments,
+    workingDir: source?.relaunch?.workingDir ?? "",
+  };
+  for (const [name, value] of Object.entries(values)) {
+    (elements.shortcutForm.elements.namedItem(name) as HTMLInputElement).value = value;
+  }
+  elements.shortcutForm.hidden = false;
+  elements.root.classList.remove("is-hidden");
+  const firstInput = elements.shortcutForm.querySelector("input");
+  if (firstInput) focusShortcutInput(firstInput).catch(reportError);
+  updateCursorHitbox();
+  updateAutoHide();
+}
+
+requiredElement("cancel-shortcut").addEventListener("click", () => {
+  closeShortcutForm();
+  restoreShortcutFocus();
+});
+
+elements.shortcutForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!shortcutWorkspace || shortcutWorkspace !== activeWorkspace()?.id) return;
+  const data = new FormData(elements.shortcutForm);
+  const label = String(data.get("label") ?? "").trim();
+  // Explorer's Copy as path includes surrounding quotes; Run expects the path alone.
+  const cleanPath = (value: FormDataEntryValue | null) => String(value ?? "").trim().replace(/^"(.*)"$/, "$1");
+  const command = cleanPath(data.get("program"));
+  if (!label || !command) {
+    showToast("Enter a name and application or shortcut path");
+    return;
+  }
+  const pin: Pin = {
+    // Keep shortcut identities distinct even when their applications match.
+    key: editingShortcutKey ?? `shortcut:${crypto.randomUUID()}`,
+    label,
+    path: command,
+    umid: null,
+    matchPath: command === (shortcutSource?.relaunch?.command ?? shortcutSource?.path)
+      ? shortcutSource?.matchPath ?? shortcutSource?.path : null,
+    matchUmid: command === (shortcutSource?.relaunch?.command ??
+      (shortcutSource?.umid ? `shell:AppsFolder\\${shortcutSource.umid}` : shortcutSource?.path))
+      ? shortcutSource?.matchUmid ?? shortcutSource?.umid : null,
+    relaunch: {
+      command,
+      args: String(data.get("args") ?? "") === initialArguments
+        ? shortcutSource?.relaunch?.args ?? (initialArguments || null)
+        : String(data.get("args") ?? "") || null,
+      workingDir: cleanPath(data.get("workingDir")) || null,
+      icon: shortcutSource?.relaunch?.icon ?? null,
+    },
+  };
+  try {
+    const pins = readPins(shortcutWorkspace);
+    const editing = editingShortcutKey !== null;
+    if (editing) {
+      const index = pins.findIndex((entry) => entry.key === editingShortcutKey);
+      if (index < 0) {
+        showToast("This shortcut is no longer pinned");
+        return;
+      }
+      pins[index] = pin;
+    } else {
+      pins.push(pin);
+    }
+    writePins(shortcutWorkspace, pins);
+    closeShortcutForm();
+    render();
+    restoreShortcutFocus();
+    showToast(editing ? `Updated ${label}` : `Pinned ${label} to this workspace`);
+  } catch (error) {
+    reportError(error);
+  }
+});
 
 function closePreviews(): void {
   clearTimeout(previewTimer);
@@ -155,6 +361,7 @@ function showPreviews(button: HTMLButtonElement, item: TaskItem, refreshing = fa
   clearTimeout(previewTimer);
   if (!refreshing) clearTimeout(previewCloseTimer);
   if (!button.isConnected || item.windows.length < 2) return;
+  if (!elements.shortcutForm.hidden || !elements.appMenu.hidden) return;
   previewKey = item.key;
   previewWorkspace = activeWorkspace()?.id ?? null;
   for (const task of renderedTasks.keys()) task.setAttribute("aria-expanded", String(task === button));
@@ -207,6 +414,11 @@ elements.previews.addEventListener("focusout", (event) => {
   if (!(event.relatedTarget instanceof Node) || !elements.previews.contains(event.relatedTarget)) schedulePreviewClose();
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements.shortcutForm.hidden) {
+    closeShortcutForm();
+    restoreShortcutFocus();
+    return;
+  }
   if (event.key === "Escape" && previewKey) {
     const anchor = [...renderedTasks].find(([, item]) => item.key === previewKey)?.[0];
     closePreviews();
@@ -430,24 +642,27 @@ function showToast(message: string): void {
 }
 
 async function launch(pin: Pin): Promise<void> {
-  if (pin.relaunch) {
+  if (pin.key.startsWith("shortcut:")) {
+    const workspace = activeWorkspace();
+    if (workspace) shortcutLaunches.set(pin.key, {
+      workspaceId: workspace.id,
+      started: Date.now(),
+      existing: new Set(state.windows.map((win) => win.hwnd)),
+    });
+  }
+  try {
+    const program = pin.relaunch?.command ?? (pin.umid ? `shell:AppsFolder\\${pin.umid}` : pin.path);
+    if (!program) throw new Error(`No launch command is available for ${pin.label}`);
     await invoke(SeelenCommand.Run, {
-      program: pin.relaunch.command,
-      args: pin.relaunch.args ?? null,
-      workingDir: pin.relaunch.workingDir ?? null,
+      program,
+      args: pin.relaunch?.args ?? null,
+      workingDir: pin.relaunch?.workingDir ?? null,
       elevated: false,
     });
-    return;
+  } catch (error) {
+    shortcutLaunches.delete(pin.key);
+    throw error;
   }
-
-  const program = pin.umid ? `shell:AppsFolder\\${pin.umid}` : pin.path;
-  if (!program) throw new Error(`No launch command is available for ${pin.label}`);
-  await invoke(SeelenCommand.Run, {
-    program,
-    args: null,
-    workingDir: null,
-    elevated: false,
-  });
 }
 
 async function activate(item: TaskItem): Promise<void> {
@@ -509,6 +724,8 @@ function taskbarOverlapsWindow(): boolean {
 }
 
 function autoHideWanted(): boolean {
+  if (!elements.appMenu.hidden) return false;
+  if (!elements.shortcutForm.hidden) return false;
   if (state.desktops?.switching) return false;
   if (previewKey || state.widgetFocused || state.mouseAtBottomEdge || state.pointerOverSurface) return false;
 
@@ -603,6 +820,8 @@ function updateCursorHitbox(mousePosition = state.mousePosition): void {
   const scale = monitor.scaleFactor;
   const surfaces = [elements.surface];
   if (!elements.previews.hidden) surfaces.push(elements.previews);
+  if (!elements.shortcutForm.hidden) surfaces.push(elements.shortcutForm);
+  if (!elements.appMenu.hidden) surfaces.push(elements.appMenu);
   const isOverSurface = surfaces.some((surface) => {
     const bounds = surface.getBoundingClientRect();
     const left = monitor.rect.left + bounds.left * scale;
@@ -624,13 +843,35 @@ function modelFor(workspace: DesktopWorkspace): TaskItem[] {
   const pins = readPins(workspace.id);
   const running = visibleWindows(workspace);
   const groups = new Map<string, Omit<TaskItem, "label">>();
+  const windowIds = new Set(state.windows.map((win) => win.hwnd));
+  for (const hwnd of shortcutWindows.keys()) {
+    if (!windowIds.has(hwnd)) shortcutWindows.delete(hwnd);
+  }
+  for (const [key, launch] of shortcutLaunches) {
+    if (Date.now() - launch.started > 30000) shortcutLaunches.delete(key);
+  }
 
   for (const pin of pins) {
     groups.set(pin.key, { key: pin.key, pin, windows: [] });
   }
 
   for (const win of running) {
-    const key = appKey(win);
+    const candidates = pins.filter((pin) => pin.key.startsWith("shortcut:") && shortcutMatchesWindow(pin, win));
+    const assigned = shortcutWindows.get(win.hwnd);
+    const existing = assigned?.workspaceId === workspace.id
+      ? candidates.find((pin) => pin.key === assigned.pinKey) : undefined;
+    const launched = candidates.filter((pin) => {
+      const launch = shortcutLaunches.get(pin.key);
+      return launch?.workspaceId === workspace.id && !launch.existing.has(win.hwnd);
+    }).sort((a, b) => shortcutLaunches.get(b.key)!.started - shortcutLaunches.get(a.key)!.started)[0];
+    const exact = candidates.filter((pin) => win.relaunch && pin.relaunch &&
+      JSON.stringify(pin.relaunch.args) === JSON.stringify(win.relaunch.args) &&
+      pin.relaunch.workingDir === win.relaunch.workingDir);
+    const regularKey = appKey(win);
+    const shortcut = existing ?? launched ?? (groups.has(regularKey) ? undefined
+      : exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : undefined);
+    if (shortcut) shortcutWindows.set(win.hwnd, { workspaceId: workspace.id, pinKey: shortcut.key });
+    const key = shortcut?.key ?? regularKey;
     const group = groups.get(key) ?? { key, pin: null, windows: [] };
     group.windows.push(win);
     groups.set(key, group);
@@ -650,6 +891,8 @@ function updateTaskFocus(): void {
 
 function render(): void {
   const workspace = activeWorkspace();
+  if (shortcutWorkspace && shortcutWorkspace !== workspace?.id) closeShortcutForm();
+  if (menuWorkspace && menuWorkspace !== workspace?.id) closeAppMenu();
   clearTimeout(previewTimer);
   if (previewWorkspace !== workspace?.id) closePreviews();
   renderedTasks.clear();
@@ -679,7 +922,7 @@ function render(): void {
     button.className = "task-item";
     button.classList.toggle("is-open", item.windows.length > 0);
     button.title = item.label;
-    button.setAttribute("aria-label", `${item.label}; right-click to ${item.pin ? "unpin" : "pin"}`);
+    button.setAttribute("aria-label", `${item.label}; right-click for pin options`);
     button.append(createIcon(item));
 
     if (item.windows.length > 1) {
@@ -716,7 +959,7 @@ function render(): void {
     button.addEventListener("click", () => { closePreviews(); activate(item).catch(reportError); });
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      togglePin(workspace, item);
+      showAppMenu(button, item);
     });
     elements.items.append(button);
     renderedTasks.set(button, item);
