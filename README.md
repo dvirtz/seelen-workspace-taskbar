@@ -15,7 +15,10 @@ A proof-of-concept Seelen UI widget with taskbar state scoped to the active Seel
 - Uses a layered hitbox, so hidden and transparent areas do not block windows underneath.
 - Hides the native Windows taskbar while enabled and restores the previous SeelenWeg state when disabled.
 - Left-clicks focus/minimize a running app or launch a pinned app.
-- Right-clicks a running app to pin it, or a pinned app to unpin it, on the current workspace.
+- Right-click an icon and choose **Pin application** (or **Unpin** for existing pins), or **Pin shortcut…** to open the shortcut form prefilled with the app's name, launch path, available arguments, and working directory.
+- The shortcut form accepts a name, an application or Windows shortcut (`.lnk`) path, optional arguments, and an optional working directory. Enter arguments separately from the path; quote argument values containing spaces (for example, `--profile "Work profile"`).
+- Shortcut pins launch their saved command and group matching running windows under the shortcut icon. Clicking a running shortcut focuses or minimizes its window. Multiple shortcuts can use different arguments; newly opened windows are associated with the matching shortcut most recently launched. If several shortcuts match an existing window and its launch details cannot distinguish them, it appears separately. Right-click a shortcut and choose **Unpin** to remove it.
+- Right-click a pinned shortcut and choose **Edit shortcut…** to change its saved details. **Save changes** updates the existing pin in place; **Cancel** leaves it unchanged.
 
 If an icon has not been cached yet, the widget asks Seelen to extract it and temporarily shows a letter tile. The taskbar is an overlay and does not reserve screen space.
 
