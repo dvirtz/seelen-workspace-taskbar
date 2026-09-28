@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "npm run typecheck && node scripts/build.mjs",
+    "load": "node scripts/widget.mjs load",
+    "unload": "node scripts/widget.mjs unload",
     "typecheck": "tsc --noEmit",
     "bundle": "npm run typecheck && node scripts/bundle.mjs",
     "release": "semantic-release"

@@ -54,7 +54,7 @@ npm run build
 Keep Seelen UI running, then run:
 
 ```powershell
-slu resource load widget .\dist\widget
+npm run load
 ```
 
 In Seelen Settings, enable **Workspace Taskbar**. The widget uses SeelenWeg's service-managed native-taskbar ownership while suppressing SeelenWeg's visual instances. Loaded development resources are session-only and must be loaded again after restarting Seelen UI.
@@ -62,7 +62,7 @@ In Seelen Settings, enable **Workspace Taskbar**. The widget uses SeelenWeg's se
 To unload it:
 
 ```powershell
-slu resource unload widget .\dist\widget
+npm run unload
 ```
 
 To rebuild the widget and create a distributable YAML file under `dist/bundles/`:
@@ -71,7 +71,7 @@ To rebuild the widget and create a distributable YAML file under `dist/bundles/`
 npm run bundle
 ```
 
-Bundling requires the Seelen CLI. Set `SLU_PATH` to override its executable path
+Loading, unloading, and bundling require the Seelen CLI. Set `SLU_PATH` to override its executable path
 (the default on Windows is `C:\Program Files\Seelen\Seelen UI\slu.exe`).
 
 ## Releases
