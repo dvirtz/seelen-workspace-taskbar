@@ -218,7 +218,8 @@ window.addEventListener("blur", () => { if (drag) { finishDrag(); render(); } })
 function shortcutMatchesWindow(pin: Pin, win: UserAppWindow): boolean {
   const normalize = (value: string | null | undefined) => value?.replaceAll("/", "\\").toLowerCase();
   const umid = pin.matchUmid ?? pin.umid;
-  if (umid && win.umid && normalize(umid) === normalize(win.umid)) return true;
+  // Distinct app identities can share an executable (for example, Chrome web apps).
+  if (umid && win.umid) return normalize(umid) === normalize(win.umid);
   const paths = [pin.matchPath, pin.relaunch?.command, pin.path].map(normalize).filter(Boolean);
   return [win.process.path, win.relaunch?.command].some((path) => !!path && paths.includes(normalize(path)));
 }
