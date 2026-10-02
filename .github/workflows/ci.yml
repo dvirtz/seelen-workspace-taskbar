@@ -16,9 +16,65 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  test:
+    name: Live Seelen tests
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install and start Seelen
+        shell: pwsh
+        run: ./scripts/ci-seelen.ps1
+      - run: npm run load
+      - name: Create a second workspace
+        shell: pwsh
+        run: |
+          & $env:SLU_PATH vd create-new-workspace
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the second test workspace.' }
+      - name: Run live tests
+        run: npm run test:seelen -- --reporter=list,html
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+      - name: Collect diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ci-diagnostics | Out-Null
+          Get-Process | Select-Object Name,Id,SessionId | Out-File ci-diagnostics/processes.txt
+          Get-CimInstance Win32_Process | Where-Object Name -Match 'seelen|slu-service|msedgewebview2' | Select-Object Name,ProcessId,CommandLine | Format-List | Out-File ci-diagnostics/seelen-processes.txt
+          Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess | Out-File ci-diagnostics/listeners.txt
+          Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+          $bounds = [Windows.Forms.SystemInformation]::VirtualScreen
+          $bitmap = [Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+          $graphics = [Drawing.Graphics]::FromImage($bitmap)
+          try {
+            $graphics.CopyFromScreen($bounds.Location, [Drawing.Point]::Empty, $bounds.Size)
+            $bitmap.Save((Join-Path $PWD 'ci-diagnostics/desktop.png'))
+          } finally { $graphics.Dispose(); $bitmap.Dispose() }
+          foreach ($root in @($env:LOCALAPPDATA, $env:APPDATA)) {
+            $logs = Join-Path $root 'com.seelen.seelen-ui/logs'
+            if (Test-Path $logs) { Copy-Item $logs "ci-diagnostics/$([IO.Path]::GetFileName($root))-logs" -Recurse }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: seelen-test-results
+          path: |
+            playwright-report/
+            test-results/
+            ci-diagnostics/
+          retention-days: 7
+
   build:
     name: Type-check and build
     runs-on: windows-latest
+    needs: test
     timeout-minutes: 20
 
     steps:

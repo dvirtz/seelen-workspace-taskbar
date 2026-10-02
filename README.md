@@ -74,6 +74,102 @@ npm run bundle
 Loading, unloading, and bundling require the Seelen CLI. Set `SLU_PATH` to override its executable path
 (the default on Windows is `C:\Program Files\Seelen\Seelen UI\slu.exe`).
 
+## Live integration tests
+
+The Playwright tests attach to the real Seelen WebView2 runtime, with no mocks
+or separate browser installation. Keep Windows **unlocked** and avoid interacting
+with the desktop during the run: Seelen pauses window tracking while locked.
+
+The interaction tests compile a small disposable Windows Forms app using Windows
+PowerShell and the installed .NET Framework. They temporarily change pins, icon
+order, widget settings, workspace selection, focus, and cursor position on one
+tested monitor. Cleanup restores the saved state and terminates the test windows.
+Each test saves an `original-desktop-state` attachment under `test-results/` for
+recovery if the runner is interrupted; test windows also exit after two minutes.
+
+Fully exit Seelen, then start it with debugging enabled from PowerShell:
+
+```powershell
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+Start-Process "C:\Program Files\Seelen\Seelen UI\seelen-ui.exe" -WindowStyle Hidden
+Remove-Item Env:\WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+npm run build
+npm run load
+```
+
+Enable **Workspace Taskbar** in Seelen Settings, then run:
+
+```powershell
+npm run test:seelen
+```
+
+To run only the read-only initialization smoke test:
+
+```powershell
+npm run test:seelen -- --grep '@smoke'
+```
+
+Tests are grouped by behavior:
+
+- `tests/taskbar.spec.ts`: initialization (`@smoke`), placement, window counts, width, and auto-hide/hitboxes.
+- `tests/pins.spec.ts`: application pins, shortcut forms, and workspace/monitor isolation.
+- `tests/ordering.spec.ts`: dragging, cancellation, locking, and saved order.
+- `tests/windows.spec.ts`: launching, grouping, activation, and previews.
+
+Run a feature group by passing its filename, for example
+`npm run test:seelen -- tests/pins.spec.ts`.
+
+Fixture classes live in `tests/fixtures/`: `Seelen` provides runtime and workspace
+operations, `Taskbar` provides widget actions and assertions, and `Desktop` saves
+and restores state for interaction tests. Import `test` and `expect` from
+`./fixtures/index.js`. The `taskbar` and `seelen` fixtures share the selected
+monitor; `taskbars` exposes all monitor instances without modifying desktop state.
+
+Coverage of **What it does**:
+
+| Behavior | Automated coverage |
+| --- | --- |
+| One bottom taskbar per enabled monitor | Real native window position, size, and unique monitor instances |
+| Workspace/monitor filtering | Live window counts, switching workspaces, moving a disposable window between workspaces |
+| Global window pins | Included in expected live counts when present; creating global pins is not tested |
+| Per-workspace and per-monitor app pins | Shortcut isolation across workspaces and monitor instances |
+| Reordering | Pointer drag, Escape and outside-drop cancellation, persistence after WebView reload |
+| Order lock | Lock/unlock through the menu, blocked dragging, persistence after reload |
+| Icons and labels | Icon/fallback elements and accessible app names; icon extraction itself is not forced |
+| Previews | Two real windows, hover, titles/counts, click-to-focus, Up and Escape keys |
+| Auto-hide and hitbox | Never, Always, positive On overlap, bottom-edge reveal, native hit-testing through transparent/hidden regions |
+| Width modes | Minimal/Full Width settings, full-width geometry, monitor isolation, reload persistence |
+| App activation | Real shortcut launch, focus and minimize/restore |
+| Pinning and shortcut form | Pin/unpin, prefilled fields, required name, quoted paths, arguments, working directory, edit/save/cancel |
+| Shortcut identity | Editing retains the pin key; launched windows group under their shortcut |
+
+Workspace switching requires two existing workspaces on a tested monitor and is
+reported as skipped when unavailable. Tests check persistence across a WebView
+reload, not a full Seelen restart. Native Windows taskbar restoration, reserved
+screen space, missing-thumbnail fallback, `.lnk` execution, multiple shortcuts
+with ambiguous matching, and the no-overlap auto-hide transition still need
+separate coverage. The `.lnk` form test checks storage only, using a dummy path.
+
+The default endpoint is `http://[::1]:9222`. Override it when using another
+address or port:
+
+```powershell
+$env:SEELEN_CDP_URL = "http://localhost:9223"
+npm run test:seelen
+```
+
+If connection fails, check `Invoke-RestMethod "http://[::1]:9222/json/version"`.
+A 404 can mean another application owns that address and port; IPv4 and IPv6
+can reach different processes. Debugging must be enabled before Seelen starts.
+The suite runs serially against your currently loaded widget; rebuild and reload
+after changes. CI also runs the suite on a disposable `windows-2025` desktop,
+using Seelen 2.8.6. The job checks that the session is unlocked, installs Seelen,
+enables CDP, and loads the freshly built widget before testing.
+The disposable CI profile grants this widget permission to launch programs;
+local users must approve Seelen's native permission prompt on first launch.
+Test reports and Seelen logs are uploaded even on failure. Build/release waits for the tests.
+Restart Seelen normally to disable debugging.
+
 ## Releases
 
 CI type-checks and bundles the widget on pull requests and pushes to `main` or `beta`.
