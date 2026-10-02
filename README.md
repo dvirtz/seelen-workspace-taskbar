@@ -71,7 +71,18 @@ To rebuild the widget and create a distributable YAML file under `dist/bundles/`
 npm run bundle
 ```
 
-Loading, unloading, and bundling require the Seelen CLI. Set `SLU_PATH` to override its executable path
+To install the newest existing local bundle permanently, keep Seelen UI running and run:
+
+```powershell
+npm run install:seelen
+```
+
+This selects the latest timestamped `bundle *.yml` in `dist/bundles/`, copies it to
+`%APPDATA%\com.seelen.seelen-ui\widgets\workspace-taskbar.yml`, and loads it immediately.
+Repeated installs replace that file. Run `npm run bundle` first to include your latest code changes.
+Enable **Workspace Taskbar** in Seelen Settings if it is not already enabled.
+
+Loading, unloading, bundling, and installing require the Seelen CLI. Set `SLU_PATH` to override its executable path
 (the default on Windows is `C:\Program Files\Seelen\Seelen UI\slu.exe`).
 
 ## Live integration tests

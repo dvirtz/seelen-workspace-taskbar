@@ -9,8 +9,9 @@
     "load": "node scripts/widget.mjs load",
     "unload": "node scripts/widget.mjs unload",
     "typecheck": "tsc --noEmit && tsc --project tests/tsconfig.json",
-    "test:seelen": "playwright test",
+    "test": "playwright test",
     "bundle": "npm run typecheck && node scripts/bundle.mjs",
+    "install-bundle": "node scripts/install.mjs",
     "release": "semantic-release"
   },
   "dependencies": {

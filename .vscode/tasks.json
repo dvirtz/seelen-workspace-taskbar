@@ -16,6 +16,21 @@
 			],
 			"label": "npm: typecheck",
 			"detail": "tsc --noEmit && tsc --project tests/tsconfig.json"
+		},
+		{
+			"type": "npm",
+			"script": "bundle",
+			"problemMatcher": [],
+			"label": "npm: bundle",
+			"detail": "npm run typecheck && node scripts/bundle.mjs"
+		},
+		{
+			"label": "bundle and install",
+			"dependsOn": [
+				"npm: bundle",
+				"npm: install-bundle"
+			],
+			"problemMatcher": []
 		}
-	]
+	],
 }
