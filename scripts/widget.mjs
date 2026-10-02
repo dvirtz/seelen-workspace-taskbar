@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 export const widgetDirectory = path.resolve("dist/widget");
 
-export async function runWidgetCommand(action) {
+export async function runWidgetCommand(action, resourcePath = widgetDirectory) {
   if (!["load", "unload", "bundle"].includes(action)) {
     throw new Error("Expected widget action: load, unload, or bundle");
   }
@@ -16,7 +16,7 @@ export async function runWidgetCommand(action) {
     : "slu");
   const { stdout, stderr } = await execFileAsync(
     slu,
-    ["resource", action, "widget", widgetDirectory],
+    ["resource", action, "widget", resourcePath],
     { cwd: process.cwd() },
   );
   if (stdout.trim()) console.log(stdout.trim());

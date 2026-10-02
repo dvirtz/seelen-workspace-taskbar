@@ -38,9 +38,7 @@ jobs:
           & $env:SLU_PATH vd create-new-workspace
           if ($LASTEXITCODE -ne 0) { throw 'Could not create the second test workspace.' }
       - name: Run live tests
-        run: npm run test:seelen -- --reporter=list,html
-        env:
-          PLAYWRIGHT_HTML_OPEN: never
+        run: npm run test
       - name: Collect diagnostics
         if: always()
         shell: pwsh
