@@ -7,6 +7,15 @@
 			"problemMatcher": [],
 			"label": "npm: load",
 			"detail": "node scripts/widget.mjs load"
+		},
+		{
+			"type": "npm",
+			"script": "typecheck",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"label": "npm: typecheck",
+			"detail": "tsc --noEmit && tsc --project tests/tsconfig.json"
 		}
 	]
 }

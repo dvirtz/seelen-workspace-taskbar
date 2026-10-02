@@ -8,7 +8,8 @@
     "build": "npm run typecheck && node scripts/build.mjs",
     "load": "node scripts/widget.mjs load",
     "unload": "node scripts/widget.mjs unload",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --project tests/tsconfig.json",
+    "test:seelen": "playwright test",
     "bundle": "npm run typecheck && node scripts/bundle.mjs",
     "release": "semantic-release"
   },
@@ -16,7 +17,9 @@
     "@seelen-ui/lib": "2.8.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@semantic-release/git": "11.0.1",
+    "@types/node": "26.6.3",
     "esbuild": "0.28.2",
     "semantic-release": "25.0.9",
     "semantic-release-mirror-version": "1.1.2",
