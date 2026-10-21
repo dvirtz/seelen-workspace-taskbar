@@ -23,7 +23,7 @@ The Work workspace has its own apps, with a right-click menu for managing shortc
 - Creates one bottom taskbar per monitor.
 - Shows only windows belonging to that monitor's active Seelen workspace.
 - Includes windows pinned globally by Seelen.
-- Stores app pins independently for each monitor and workspace.
+- Stores app pins per workspace, shared across monitors.
 - Drag icons left or right to reorder pinned shortcuts and running apps. Order is saved per monitor and workspace, including across restarts. Drop outside the icon row or press Escape to cancel.
 - Right-click an icon and choose **Lock icon order** to prevent reordering; choose **Unlock icon order** to enable it again. The lock is saved per monitor and workspace.
 - Shows application icons with app names on hover.

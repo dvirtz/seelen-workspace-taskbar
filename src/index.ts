@@ -639,7 +639,7 @@ function activeWorkspace(): DesktopWorkspace | null {
 }
 
 function storageKey(workspaceId: string): string {
-  return `pins:${monitorId}:${workspaceId}`;
+  return `pins:${workspaceId}`;
 }
 
 function readPins(workspaceId: string): Pin[] {
@@ -1171,6 +1171,11 @@ try {
 }
 
 await positionWidget();
+// Seelen namespaces Storage keys, so native storage events can include a prefix.
+window.addEventListener("storage", (event) => {
+  const workspace = activeWorkspace();
+  if (workspace && (event.key === null || event.key.endsWith(storageKey(workspace.id)))) render();
+});
 render();
 setCursorEventsAllowed(false);
 await widget.ready();
