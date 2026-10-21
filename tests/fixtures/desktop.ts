@@ -33,8 +33,11 @@ export class Desktop {
     const state = await this.seelen.desktops();
     // Seelen wraps Storage: keys are not enumerable and key() returns prefixed
     // names. Read the known logical keys through its getItem/setItem API instead.
-    const storageKeys = state.monitors[id].workspaces.flat().flatMap(workspace =>
-      [`pins:${id}:${workspace.id}`, `icon-layout:${id}:${workspace.id}`]);
+    const storageKeys = [...new Set(Object.values(state.monitors).flatMap(monitor =>
+      monitor.workspaces.flat().flatMap(workspace => [
+        `pins:${workspace.id}`,
+        `icon-layout:${id}:${workspace.id}`,
+      ])))];
     const snapshot = {
       monitorId: id,
       originalWorkspace: (await this.seelen.workspace()).id,

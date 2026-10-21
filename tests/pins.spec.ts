@@ -51,7 +51,7 @@ test("running applications can be pinned and unpinned", async ({ desktop, taskba
   await expect(button).toHaveClass(/is-open/);
 });
 
-test("pins and running windows follow the active workspace and stay local to a monitor", async ({ desktop, taskbar, seelen }) => {
+test("pins follow the workspace across monitors while running windows stay local", async ({ desktop, taskbar, seelen }) => {
   const { title } = desktop;
   const original = await seelen.workspace();
   const id = await seelen.monitorId();
@@ -59,7 +59,10 @@ test("pins and running windows follow the active workspace and stay local to a m
   test.skip(!other, "Requires two existing Seelen workspaces on a tested monitor.");
   const label = `${title} workspace pin`;
   await taskbar.addShortcut(label);
-  for (const other of desktop.taskbars.filter(candidate => candidate !== taskbar)) await expect(other.app(label)).toHaveCount(0);
+  for (const other of desktop.taskbars.filter(candidate => candidate !== taskbar)) {
+    const workspace = await other.seelen.workspace();
+    await expect(other.app(label)).toHaveCount(workspace.id === original.id ? 1 : 0);
+  }
   const helper = (await seelen.windows()).find(win => win.title.startsWith(title))!;
   await seelen.switchWorkspace(other!.id);
   await expect(taskbar.app(label)).toHaveCount(0);

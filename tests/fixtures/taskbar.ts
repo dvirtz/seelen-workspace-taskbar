@@ -37,7 +37,7 @@ export class Taskbar {
   }
 
   async pins() {
-    const key = `pins:${await this.seelen.monitorId()}:${(await this.seelen.workspace()).id}`;
+    const key = `pins:${(await this.seelen.workspace()).id}`;
     return this.page.evaluate(key => JSON.parse(localStorage.getItem(key) || "[]") as Array<{
       key: string; label: string; path: string; relaunch: { command: string; args: string | string[] | null; workingDir: string | null };
     }>, key);
